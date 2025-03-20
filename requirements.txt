@@ -1,0 +1,5 @@
+selenium==4.10.0
+webdriver-manager==3.8.6
+anticaptchaofficial==1.0.45
+pyttsx3==2.90
+requests==2.31.0
