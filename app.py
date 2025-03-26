@@ -17,7 +17,7 @@ import logging
 import time
 import re
 from datetime import datetime
-from chave import chave_api, SENHA_EMAIL, users_data
+from chave import chave_api, SENHA_EMAIL, instituicoes_dados
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -39,11 +39,11 @@ LOG_FILE = "log_cadastro_numeros.txt"
 
 # Inicializa a interface gráfica
 root = tk.Tk()
-root.title(f"Cadastrador de Nota Fiscal Paulista v2.0")
+root.title(f"Cadastrador de Nota Fiscal Paulista v2.1")
 
 # Cria um ScrolledText para exibir logs na interface
 log_area = scrolledtext.ScrolledText(root, width=50, height=20, state=tk.DISABLED, bg='light grey')
-log_area.grid(row=2, column=0, columnspan=3, pady=5, padx=10, sticky='nsew')
+log_area.grid(row=4, column=0, columnspan=3, pady=5, padx=10, sticky='nsew')
 
 # Configuração do logging para registrar logs em tempo real
 logger = logging.getLogger("CadastroLogger")
@@ -78,7 +78,6 @@ if not any(isinstance(handler, TextHandler) for handler in logger.handlers):
     logger.addHandler(text_handler)
 
 # Função para registrar logs de forma segura na thread principal
-# Função para registrar logs de forma segura na thread principal
 def registrar_log(mensagem):
     def log():
         logger.info(mensagem)
@@ -102,6 +101,8 @@ def waiting(driver, by, value, timeout=10):
     except Exception:
         registrar_log(f"Elemento {value} não encontrado em {timeout} segundos.")
         raise
+
+# Parte 2
 
 # Função para extrair o número de identificação dos arquivos XML
 def extrair_numero_identificacao(arquivo_xml):
@@ -133,14 +134,36 @@ def extrair_numero_identificacao(arquivo_xml):
         registrar_log(f"Erro ao processar o arquivo {arquivo_xml}: {e}")
         return None
 
+# Função para atualizar o combobox de usuários com base na instituição selecionada
+def atualizar_usuarios_por_instituicao(event):
+    global instituicao_selecionada
+    instituicao_selecionada = combo_instituicao.get()
+    usuarios_da_instituicao = list(instituicoes_dados[instituicao_selecionada]['usuarios'].keys())
+    
+    # Atualiza o combo de usuários
+    combo_usuarios['values'] = usuarios_da_instituicao
+    combo_usuarios.current(0)  # Seleciona o primeiro usuário da lista
+    
+    # Atualiza as variáveis de usuário e senha
+    selecionar_usuario(None)
+    
+    registrar_log(f"Instituição selecionada: {instituicao_selecionada}")
+
 # Função para atualizar as variáveis de usuário e senha com base na seleção do ComboBox
 def selecionar_usuario(event):
-    global usuario, senha, nome
+    global usuario, senha, nome, instituicao_selecionada
     usuario_selecionado = combo_usuarios.get()
-    usuario = users_data[usuario_selecionado]['user']
-    senha = users_data[usuario_selecionado]['password']
+    
+    # Verifica se uma instituição foi selecionada
+    if not instituicao_selecionada:
+        instituicao_selecionada = combo_instituicao.get()
+    
+    # Obtém as informações do usuário da instituição selecionada
+    usuario = instituicoes_dados[instituicao_selecionada]['usuarios'][usuario_selecionado]['user']
+    senha = instituicoes_dados[instituicao_selecionada]['usuarios'][usuario_selecionado]['password']
     nome = usuario_selecionado
-    registrar_log(f"Usuário selecionado: {usuario_selecionado}")
+    
+    registrar_log(f"Usuário selecionado: {usuario_selecionado} da instituição {instituicao_selecionada}")
 
 # Função para simular o progresso
 def atualizar_progress_bar(progresso):
@@ -196,6 +219,8 @@ def processar_arquivos_xml_com_progress(pasta_origem, pasta_destino):
             start_button.config(state=tk.NORMAL)
         root.after(0, ativar_start_button)
         messagebox.showinfo("Resultado", f"{contador_identificacoes} identificações foram extraídas de {total_arquivos} arquivos.")
+
+#parte 3
 
 # Função para iniciar o processamento dos arquivos XML
 def selecionar_pasta_e_processar():
@@ -306,6 +331,8 @@ def verificar_e_clicar_continuar(driver):
     except:
         registrar_log("Botão 'Continuar' não encontrado.")
 
+#parte 4
+
 # Função para navegar até a página de cadastro de cupons
 def navegar_para_cadastro(driver):
     try:
@@ -323,8 +350,11 @@ def navegar_para_cadastro(driver):
         time.sleep(2)
 
         entidade_dropdown = Select(waiting(driver, By.ID, "ddlEntidadeFilantropica"))
-        entidade_dropdown.select_by_visible_text("ASSOCIACAO WISE MADDNESS")
-        registrar_log("Selecionou a entidade 'ASSOCIACAO WISE MADDNESS'.")
+        
+        # Seleciona a entidade com base na instituição escolhida na interface
+        nome_entidade = instituicoes_dados[instituicao_selecionada]["nome_entidade"]
+        entidade_dropdown.select_by_visible_text(nome_entidade)
+        registrar_log(f"Selecionou a entidade '{nome_entidade}'.")
         time.sleep(2)
 
         waiting(driver, By.XPATH, "//input[@value='Nova Nota']").click()
@@ -423,6 +453,8 @@ def cadastrar_numero(driver, numero, indice):
         registrar_log(f"[{indice}] Erro ao cadastrar número {numero}: {str(e)}")
         verificar_tela_atual(driver)
         return False
+    
+# parte 5
 
 # Função para reprocessar números inválidos
 def reprocessar_numeros(driver, numeros_invalidos_lista):
@@ -556,6 +588,8 @@ def cadastrar_numeros():
         driver.quit()
         registrar_log("Fechando o navegador.")
 
+# parte 6
+
 # Função para parar o processamento
 def parar_processamento():
     if messagebox.askyesno("Confirmação", "Tem certeza de que deseja parar o processamento?"):
@@ -576,20 +610,36 @@ def pausar_processamento():
             pause_event.clear()
             registrar_log("Processamento retomado.")
 
-# Inicializa a variável nome
-nome = list(users_data.keys())[0]  # Define o primeiro usuário como padrão
+# Inicializa as variáveis globais
+instituicao_selecionada = list(instituicoes_dados.keys())[0]  # Define a primeira instituição como padrão
+nome = list(instituicoes_dados[instituicao_selecionada]["usuarios"].keys())[0]  # Define o primeiro usuário como padrão
+
+# Frame para organizar os comboboxes
+frame_selecao = tk.Frame(root)
+frame_selecao.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky='w')
+
+# Adiciona um ComboBox para selecionar a instituição
+label_instituicao = tk.Label(frame_selecao, text="Selecione a instituição:")
+label_instituicao.grid(row=0, column=0, padx=10, pady=10, sticky='w')
+
+combo_instituicao = ttk.Combobox(frame_selecao, values=list(instituicoes_dados.keys()), state="readonly", width=25)
+combo_instituicao.grid(row=0, column=1, padx=5, pady=5)
+combo_instituicao.bind("<<ComboboxSelected>>", atualizar_usuarios_por_instituicao)
 
 # Adiciona um ComboBox para selecionar o usuário
-label_usuario = tk.Label(root, text="Selecione o usuário:")
-label_usuario.grid(row=0, column=0, padx=10, pady=10)
+label_usuario = tk.Label(frame_selecao, text="Selecione o usuário:")
+label_usuario.grid(row=1, column=0, padx=10, pady=10, sticky='w')
 
-combo_usuarios = ttk.Combobox(root, values=list(users_data.keys()),state="readonly")
-combo_usuarios.grid(row=1, column=0, padx=5, pady=5)
+# Inicialmente, carrega apenas os usuários da primeira instituição
+combo_usuarios = ttk.Combobox(frame_selecao, values=list(instituicoes_dados[instituicao_selecionada]["usuarios"].keys()), state="readonly", width=25)
+combo_usuarios.grid(row=1, column=1, padx=5, pady=5)
 combo_usuarios.bind("<<ComboboxSelected>>", selecionar_usuario)
 
-# Define um usuário padrão ao iniciar a interface (opcional)
-combo_usuarios.current(0)  # Seleciona o primeiro usuário da lista como padrão
-selecionar_usuario(None)  # Atualiza as variáveis de usuário e senha
+# Define valores padrão ao iniciar a interface
+combo_instituicao.current(0)  # Seleciona a primeira instituição da lista como padrão
+combo_usuarios.current(0)     # Seleciona o primeiro usuário da lista como padrão
+atualizar_usuarios_por_instituicao(None)  # Atualiza os usuários disponíveis
+selecionar_usuario(None)      # Atualiza as variáveis de usuário e senha
 
 # Lista para armazenar números de identificação
 numeros_identificacao = []
@@ -603,7 +653,7 @@ progress_bar = ttk.Progressbar(root, orient="horizontal", mode="determinate", le
 progress_bar.grid(row=3, column=0, columnspan=3, pady=10)
 
 # Define o tamanho da janela
-window_width = 450
+window_width = 550  # Aumentado para acomodar novos controles
 window_height = 700
 
 # Obtém as dimensões da tela
@@ -618,7 +668,7 @@ y_position = (screen_height - window_height) // 2  # Centraliza verticalmente
 root.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
 
 frame = tk.Frame(root, padx=10, pady=10)
-frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
 entry_pasta_origem = tk.Entry(frame, width=50)
 entry_pasta_origem.grid(row=1, column=0, columnspan=3, pady=5, padx=5)
@@ -639,7 +689,7 @@ stop_button.grid(row=2, column=2, pady=5, padx=5)
 label_arquivos = tk.Label(frame, text="Total: 0 notas")
 label_arquivos.grid(row=2, column=3, pady=5, padx=5)
 
-root.grid_rowconfigure(2, weight=1)  # Permite que o log_area expanda
+root.grid_rowconfigure(3, weight=1)  # Permite que o log_area expanda
 root.grid_columnconfigure(0, weight=1)
 
 # Mensagem de áudio após carregar a interface gráfica

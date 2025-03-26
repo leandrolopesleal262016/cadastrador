@@ -1,1 +1,5 @@
-2025-03-20 08:12:11,791 - Usuário selecionado: Anderson
+2025-03-26 08:17:39,427 - Usuário selecionado: Anderson da instituição WISE MADNESS
+2025-03-26 08:17:39,427 - Instituição selecionada: WISE MADNESS
+2025-03-26 08:17:39,427 - Usuário selecionado: Anderson da instituição WISE MADNESS
+2025-03-26 08:17:46,227 - Usuário selecionado: Monica da instituição CASA DA ESPERANCA
+2025-03-26 08:17:46,227 - Instituição selecionada: CASA DA ESPERANCA
