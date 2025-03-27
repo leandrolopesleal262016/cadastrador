@@ -1,5 +1,5 @@
 # API key for anti-captcha service
-chave_api = "your_anti_captcha_api_key_here"
+chave_api = "e80d7637375349b3a695241f0fcfac26"
 
 # Email password for sending reports
 SENHA_EMAIL = "your_email_password_here"

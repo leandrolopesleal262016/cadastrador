@@ -291,9 +291,40 @@ def configurar_navegador():
     chrome_options = Options()
     # Ajustar o zoom para 80%
     chrome_options.add_argument("--force-device-scale-factor=0.8")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    driver.set_window_size(1600, 1200)  # Ajusta a janela do navegador para garantir que o zoom funcione corretamente
+    
+    # Adicionar opções para melhorar a compatibilidade
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    try:
+        # Usar o chromedriver.exe que está na raiz do projeto
+        registrar_log("Usando ChromeDriver local...")
+        driver = webdriver.Chrome(
+            service=Service("chromedriver.exe"),
+            options=chrome_options
+        )
+        registrar_log("ChromeDriver inicializado com sucesso!")
+    except Exception as e:
+        registrar_log(f"Erro ao inicializar ChromeDriver local: {str(e)}")
+        try:
+            # Fallback para o WebDriverManager
+            registrar_log("Tentando usar WebDriverManager...")
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager(version="114.0.5735.90").install()),
+                options=chrome_options
+            )
+            registrar_log("ChromeDriver inicializado com WebDriverManager!")
+        except Exception as e2:
+            registrar_log(f"Erro ao inicializar com WebDriverManager: {str(e2)}")
+            # Última tentativa - inicializar sem especificar o serviço
+            registrar_log("Tentando inicializar sem especificar o serviço...")
+            driver = webdriver.Chrome(options=chrome_options)
+    
+    driver.set_window_size(1600, 1200)  # Ajusta a janela do navegador
+    registrar_log("Navegador configurado com sucesso.")
     return driver
+
 
 # Função para realizar o login no site
 def realizar_login(driver):
