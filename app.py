@@ -12,25 +12,14 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
-from anticaptchaofficial.recaptchav2proxyless import recaptchaV2Proxyless
 import logging
 import time
 import re
 from datetime import datetime
-from chave import chave_api, SENHA_EMAIL, instituicoes_dados
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+from chave import instituicoes_dados
 from webdriver_manager.chrome import ChromeDriverManager
 import pyttsx3  # Biblioteca para texto em fala
-import requests
 import socket
-
-# Configurações de e-mail
-EMAIL_REMETENTE = "leandrolopesleal26@gmail.com"
-EMAIL_DESTINATARIO = "leandrolopesleal26@gmail.com"
 
 # Definições de variáveis globais
 NOME_PROGRAMA = "Cadastrador de Nota Fiscal Paulista"
@@ -39,7 +28,7 @@ LOG_FILE = "log_cadastro_numeros.txt"
 
 # Inicializa a interface gráfica
 root = tk.Tk()
-root.title(f"Cadastrador de Nota Fiscal Paulista v2.1")
+root.title(f"Cadastrador de Nota Fiscal Paulista v3.0")
 
 # Cria um ScrolledText para exibir logs na interface
 log_area = scrolledtext.ScrolledText(root, width=50, height=20, state=tk.DISABLED, bg='light grey')
@@ -83,16 +72,6 @@ def registrar_log(mensagem):
         logger.info(mensagem)
     root.after(0, log)
 
-
-# Função para verificar conexão com a internet
-def verificar_conexao_internet():
-    try:
-        # Conectar a um servidor DNS do Google
-        socket.create_connection(("8.8.8.8", 53))
-        return True
-    except OSError:
-        return False
-
 # Função para esperar por um elemento
 def waiting(driver, by, value, timeout=10):
     try:
@@ -101,8 +80,6 @@ def waiting(driver, by, value, timeout=10):
     except Exception:
         registrar_log(f"Elemento {value} não encontrado em {timeout} segundos.")
         raise
-
-# Parte 2
 
 # Função para extrair o número de identificação dos arquivos XML
 def extrair_numero_identificacao(arquivo_xml):
@@ -220,8 +197,6 @@ def processar_arquivos_xml_com_progress(pasta_origem, pasta_destino):
         root.after(0, ativar_start_button)
         messagebox.showinfo("Resultado", f"{contador_identificacoes} identificações foram extraídas de {total_arquivos} arquivos.")
 
-#parte 3
-
 # Função para iniciar o processamento dos arquivos XML
 def selecionar_pasta_e_processar():
     global pasta_origem_selecionada  # Armazena a pasta selecionada
@@ -237,53 +212,102 @@ def selecionar_pasta_e_processar():
     else:
         registrar_log("Nenhuma pasta selecionada.")
 
-# Função para resolver o CAPTCHA
-def resolver_captcha(driver, site_key, url):
-    registrar_log("Iniciando resolução do CAPTCHA.")
-    solver = recaptchaV2Proxyless()
-    solver.set_verbose(1)
-    solver.set_key(chave_api)
-    solver.set_website_url(url)
-    solver.set_website_key(site_key)
-
-    resposta = solver.solve_and_return_solution()
-    if resposta != 0:
-        driver.execute_script(f"document.getElementById('g-recaptcha-response').value = '{resposta}'")
-        driver.execute_script("document.getElementById('btnLogin').removeAttribute('disabled')")
-        registrar_log("Desbloqueou o botão de login.")
-        time.sleep(2)
-        driver.find_element(By.ID, "btnLogin").click()
-    else:
-        registrar_log(f"Erro ao resolver CAPTCHA: {solver.err_string}")
-
-# Função para enviar um e-mail com o log e relatório
-def enviar_email():
-    registrar_log("Preparando para enviar o e-mail com o log e relatório.")
-
+# Função para verificar a presença de um elemento
+def elemento_presente(driver, by, value, timeout=1):
     try:
-        with open(RELATORIO_FILE, "r") as relatorio_file:
-            corpo = relatorio_file.read()
-    except Exception as e:
-        registrar_log(f"Erro ao ler o arquivo de relatório: {str(e)}")
-        corpo = "Não foi possível ler o relatório."
+        WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, value)))
+        return True
+    except:
+        return False
 
-    # Configuração do e-mail
-    msg = MIMEMultipart()
-    msg['From'] = EMAIL_REMETENTE
-    msg['To'] = EMAIL_DESTINATARIO
-    msg['Subject'] = f"Relatório de Processamento - {NOME_PROGRAMA}"
-
-    msg.attach(MIMEText(corpo, 'plain'))
-
-    # Enviar o e-mail
+# Função para fechar popup/mensagem flutuante com ESC - versão melhorada
+def fechar_popup_com_esc(driver):
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as servidor:
-            servidor.starttls()
-            servidor.login(EMAIL_REMETENTE, SENHA_EMAIL)
-            servidor.sendmail(EMAIL_REMETENTE, EMAIL_DESTINATARIO, msg.as_string())
-        registrar_log("E-mail enviado com sucesso.")
+        # Verifica de forma mais precisa se há algum popup/mensagem visível
+        popup_visivel = False
+        
+        # Verificar se há um popup específico com a mensagem sobre pressionar ESC
+        try:
+            mensagens = driver.find_elements(By.XPATH, "//div[contains(@class, 'Mensagem') and contains(text(), 'pressione ESC') or contains(text(), 'Caso o documento')]")
+            if mensagens and len(mensagens) > 0 and mensagens[0].is_displayed():
+                popup_visivel = True
+                registrar_log("Popup específico com mensagem sobre 'pressione ESC' detectado.")
+        except:
+            pass
+            
+        # Verificar se há um elemento específico que indica o popup
+        if not popup_visivel:
+            try:
+                popup_div = driver.find_element(By.XPATH, "//div[@class='Mensagem' and @style='display: block;']")
+                if popup_div.is_displayed():
+                    popup_visivel = True
+                    registrar_log("Popup genérico com classe 'Mensagem' detectado.")
+            except:
+                pass
+        
+        # Se não detectou especificamente, verifica visualmente por um overlay/popup
+        if not popup_visivel:
+            try:
+                # Verifica se há algum elemento que parece ser um overlay (cobre parte da tela)
+                overlay_elements = driver.find_elements(By.XPATH, "//div[contains(@style, 'position: absolute') and contains(@style, 'z-index')]")
+                for elem in overlay_elements:
+                    if elem.is_displayed() and 'none' not in elem.get_attribute('style'):
+                        size = elem.size
+                        # Se o elemento for grande o suficiente para ser um overlay
+                        if size['width'] > 200 and size['height'] > 200:
+                            popup_visivel = True
+                            registrar_log(f"Possível overlay/popup detectado: {elem.get_attribute('outerHTML')[:100]}...")
+                            break
+            except:
+                pass
+        
+        # Se um popup foi detectado, tenta fechá-lo
+        if popup_visivel:
+            registrar_log("Popup/mensagem flutuante detectado! Tentando fechar...")
+            
+            # Tenta clicar em botão de fechar se existir
+            try:
+                botoes = driver.find_elements(By.XPATH, "//input[@value='Não' or @value='Fechar' or @value='OK']")
+                for botao in botoes:
+                    if botao.is_displayed():
+                        botao.click()
+                        registrar_log(f"Clicou no botão '{botao.get_attribute('value')}' para fechar a mensagem.")
+                        time.sleep(1)
+                        return True
+            except:
+                pass
+                
+            # Envia tecla ESC para fechar o popup
+            action = ActionChains(driver)
+            action.send_keys(Keys.ESCAPE).perform()
+            registrar_log("Enviou tecla 'ESC' para fechar o popup.")
+            time.sleep(1)
+            
+            # Verifica se o popup foi fechado
+            # Faz uma verificação mais simples para não perder tempo
+            try:
+                mensagens = driver.find_elements(By.XPATH, "//div[contains(@class, 'Mensagem') and @style='display: block;']")
+                if not mensagens or len(mensagens) == 0 or not mensagens[0].is_displayed():
+                    registrar_log("Popup foi fechado com sucesso!")
+                    return True
+                else:
+                    # Tenta novamente com JavaScript
+                    driver.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {'key': 'Escape'}))")
+                    registrar_log("Tentou fechar popup usando JavaScript.")
+                    time.sleep(1)
+                    return True
+            except:
+                # Se der erro na verificação, provavelmente o popup sumiu
+                registrar_log("Popup parece ter sido fechado (não foi possível verificar).")
+                return True
+        else:
+            # Não detectou popup, então não precisa enviar ESC
+            return True
+            
     except Exception as e:
-        registrar_log(f"Erro ao enviar e-mail: {str(e)}")
+        registrar_log(f"Erro ao tentar fechar popup: {str(e)}")
+        # Retorna True mesmo em caso de erro para não bloquear o fluxo
+        return True
 
 # Função para configurar o navegador
 def configurar_navegador():
@@ -292,39 +316,22 @@ def configurar_navegador():
     # Ajustar o zoom para 80%
     chrome_options.add_argument("--force-device-scale-factor=0.8")
     
-    # Adicionar opções para melhorar a compatibilidade
-    chrome_options.add_argument("--no-sandbox")
+    # Adicionar estas opções para desativar as DevTools e mensagens de console
+    chrome_options.add_argument("--disable-logging")
+    chrome_options.add_argument("--log-level=3")  # Apenas mensagens fatais
+    chrome_options.add_argument("--silent")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    try:
-        # Usar o chromedriver.exe que está na raiz do projeto
-        registrar_log("Usando ChromeDriver local...")
-        driver = webdriver.Chrome(
-            service=Service("chromedriver.exe"),
-            options=chrome_options
-        )
-        registrar_log("ChromeDriver inicializado com sucesso!")
-    except Exception as e:
-        registrar_log(f"Erro ao inicializar ChromeDriver local: {str(e)}")
-        try:
-            # Fallback para o WebDriverManager
-            registrar_log("Tentando usar WebDriverManager...")
-            from webdriver_manager.chrome import ChromeDriverManager
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager(version="114.0.5735.90").install()),
-                options=chrome_options
-            )
-            registrar_log("ChromeDriver inicializado com WebDriverManager!")
-        except Exception as e2:
-            registrar_log(f"Erro ao inicializar com WebDriverManager: {str(e2)}")
-            # Última tentativa - inicializar sem especificar o serviço
-            registrar_log("Tentando inicializar sem especificar o serviço...")
-            driver = webdriver.Chrome(options=chrome_options)
+    # Adicionar esta opção para esconder a janela do ChromeDriver
+    chrome_service = Service(ChromeDriverManager().install())
+    chrome_service.creation_flags = 0x08000000  # CREATE_NO_WINDOW flag
     
-    driver.set_window_size(1600, 1200)  # Ajusta a janela do navegador
-    registrar_log("Navegador configurado com sucesso.")
+    driver = webdriver.Chrome(service=chrome_service, options=chrome_options)
+    driver.set_window_size(1400, 900)  # Ajusta a janela do navegador para garantir que o zoom funcione corretamente
     return driver
-
 
 # Função para realizar o login no site
 def realizar_login(driver):
@@ -341,13 +348,22 @@ def realizar_login(driver):
         time.sleep(1)
 
         waiting(driver, By.ID, 'captchaPnl')
-        chave_captcha = driver.find_element(By.CLASS_NAME, 'g-recaptcha').get_attribute('data-sitekey')
+        registrar_log("CAPTCHA detectado. Por favor, resolva o CAPTCHA manualmente e clique no botão de login.")
+        mensagem_fala = "Por favor, resolva o CAPTCHA manualmente e clique no botão de login."
 
-        if chave_captcha:
-            registrar_log(f"Chave do CAPTCHA obtida: {chave_captcha}")
-            resolver_captcha(driver, chave_captcha, "https://www.nfp.fazenda.sp.gov.br/login.aspx")
-        else:
-            registrar_log("Chave do CAPTCHA não encontrada.")
+        # Aguarda que o usuário resolva o CAPTCHA e faça login manualmente
+        # Verifica periodicamente se saímos da tela de login
+        start_time = time.time()
+        timeout = 120  # 2 minutos para resolver o CAPTCHA
+        
+        while time.time() - start_time < timeout:
+            # Verifica se ainda estamos na tela de login
+            if "login.aspx" not in driver.current_url or not elemento_presente(driver, By.ID, "UserName", timeout=1):
+                registrar_log("Login realizado com sucesso.")
+                return
+            time.sleep(2)  # Verifica a cada 2 segundos
+            
+        registrar_log("Tempo limite excedido para resolução do CAPTCHA.")
     except Exception as e:
         registrar_log(f"Erro ao realizar login: {str(e)}")
         verificar_tela_atual(driver)
@@ -355,137 +371,501 @@ def realizar_login(driver):
 # Função para verificar e clicar no botão "Continuar" se presente
 def verificar_e_clicar_continuar(driver):
     try:
-        continuar_button = driver.find_element(By.ID, "btnContinuar")
-        continuar_button.click()
-        registrar_log("Botão 'Continuar' clicado.")
-        time.sleep(2)
+        # Verifica se o botão "Continuar" está presente e clica nele
+        if elemento_presente(driver, By.ID, "btnContinuar", timeout=2):
+            driver.find_element(By.ID, "btnContinuar").click()
+            registrar_log("Botão 'Continuar' clicado.")
+            time.sleep(2)
+            return True
+        return False
     except:
-        registrar_log("Botão 'Continuar' não encontrado.")
-
-#parte 4
-
-# Função para navegar até a página de cadastro de cupons
-def navegar_para_cadastro(driver):
-    try:
-        verificar_e_clicar_continuar(driver)
-        waiting(driver, By.XPATH, "//a[text()='Entidades']").click()
-        registrar_log("Navegando para 'Entidades'.")
-        time.sleep(2)
-
-        waiting(driver, By.XPATH, "//a[text()='Cadastramento de Cupons']").click()
-        registrar_log("Selecionou 'Cadastramento de Cupons'.")
-        time.sleep(2)
-
-        waiting(driver, By.XPATH, "//input[@value='Prosseguir']").click()
-        registrar_log("Clicou em 'Prosseguir'.")
-        time.sleep(2)
-
-        entidade_dropdown = Select(waiting(driver, By.ID, "ddlEntidadeFilantropica"))
-        
-        # Seleciona a entidade com base na instituição escolhida na interface
-        nome_entidade = instituicoes_dados[instituicao_selecionada]["nome_entidade"]
-        entidade_dropdown.select_by_visible_text(nome_entidade)
-        registrar_log(f"Selecionou a entidade '{nome_entidade}'.")
-        time.sleep(2)
-
-        waiting(driver, By.XPATH, "//input[@value='Nova Nota']").click()
-        registrar_log("Iniciando nova nota.")
-        time.sleep(3)
-
-        action = ActionChains(driver)
-        action.send_keys(Keys.ESCAPE).perform()
-        registrar_log("Enviou tecla 'ESC'.")
-        time.sleep(2)
-    except Exception as e:
-        registrar_log(f"Erro ao navegar para cadastro: {str(e)}")
-        verificar_tela_atual(driver)
-
-# Função para verificar a presença de um elemento
-def elemento_presente(driver, by, value):
-    try:
-        driver.find_element(by, value)
-        return True
-    except:
+        registrar_log("Botão 'Continuar' não encontrado ou não pôde ser clicado.")
         return False
 
 # Função para verificar em qual tela o programa está
 def verificar_tela_atual(driver):
     try:
+        # Verificar URL atual para identificação mais precisa
+        url_atual = driver.current_url
+        #registrar_log(f"Verificando tela atual. URL: {url_atual}")
+        
+        # Tela de login
         if elemento_presente(driver, By.ID, "UserName") and elemento_presente(driver, By.ID, "Password"):
+            registrar_log("Detectada tela de login. Realizando login...")
             realizar_login(driver)
             return "login"
-
-        if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']"):
+        
+        # Verificação mais flexível para a tela de cadastro
+        # 1. Verificar URL exata da tela de cadastro (case sensitive)
+        if "EntidadesFilantropicas/CadastroNotaEntidade.aspx" in url_atual or "ListagemNotaEntidade.aspx" in url_atual:
+            #registrar_log("Detectada tela de cadastro (pela URL).")
             return "cadastro"
-
-        if "Principal.aspx" in driver.current_url:
+        
+        # 2. Verificar elementos específicos da tela de cadastro
+        if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']"):
+            registrar_log("Detectada tela de cadastro (pelo botão 'Salvar Nota').")
+            return "cadastro"
+        
+        if elemento_presente(driver, By.XPATH, "//input[@title='Digite ou Utilize um leitor de código de barras ou QRCode']"):
+            registrar_log("Detectada tela de cadastro (pelo campo de entrada do código).")
+            return "cadastro"
+            
+        # Tela principal
+        if "Principal.aspx" in url_atual:
+            registrar_log("Detectada tela principal. Navegando para tela de cadastro...")
             navegar_para_cadastro(driver)
-            return "seleção de entidade"
+            return "principal"
+        
+        # Tela de entidades (intermediária)
+        if "EntidadesFilantropicas" in url_atual:
+            registrar_log("Detectada tela de entidades. Continuando navegação...")
+            # Verificar em qual etapa estamos
+            if elemento_presente(driver, By.ID, "ddlEntidadeFilantropica"):
+                registrar_log("Detectada tela de seleção de entidade.")
+                selecionar_entidade_e_continuar(driver)
+                return "selecao_entidade"
+            
+            # Se estamos em outra parte da seção de entidades
+            navegar_para_cadastro_a_partir_de_entidades(driver)
+            return "entidades"
+        
+        # Se chegou aqui, está em uma tela desconhecida - fazer diagnóstico detalhado
+        registrar_log("Tela não identificada automaticamente. Tentando navegar para a tela de cadastro...")
+        
+        # Após diagnóstico, tentar navegar para a tela de cadastro
+        driver.get("https://www.nfp.fazenda.sp.gov.br/Principal.aspx")
+        time.sleep(2)
+        navegar_para_cadastro(driver)
+        return "navegando_apos_diagnostico"
 
     except Exception as e:
         registrar_log(f"Erro ao verificar tela atual: {str(e)}")
-        return None
+        # Em caso de erro, tentar voltar para a página principal
+        try:
+            driver.get("https://www.nfp.fazenda.sp.gov.br/Principal.aspx")
+            time.sleep(2)
+            navegar_para_cadastro(driver)
+        except:
+            registrar_log("Não foi possível retornar à página principal após erro.")
+        return "erro"
+
+# Função para selecionar a entidade e continuar
+def selecionar_entidade_e_continuar(driver):
+    try:
+        registrar_log("Tentando selecionar a entidade na tela de listagem...")
+        
+        # Verifica qual URL estamos para diferentes comportamentos
+        url_atual = driver.current_url.lower()
+        
+        # Na tela de Listagem de Notas (ListagemNotaEntidade.aspx)
+        if "listagemnotaentidade.aspx" in url_atual:
+            registrar_log("Detectada tela de Listagem de Notas.")
+            
+            # Tenta localizar o combobox de Entidade
+            if elemento_presente(driver, By.NAME, "ddlEntidadeFilantropica", timeout=3):
+                entidade_dropdown = Select(driver.find_element(By.NAME, "ddlEntidadeFilantropica"))
+                nome_entidade = instituicoes_dados[instituicao_selecionada]["nome_entidade"]
+                
+                # Tenta selecionar pelo texto visível
+                try:
+                    entidade_dropdown.select_by_visible_text(nome_entidade)
+                    registrar_log(f"Selecionou a entidade '{nome_entidade}' pelo texto visível.")
+                except:
+                    # Se falhar, tenta selecionar o primeiro item
+                    try:
+                        entidade_dropdown.select_by_index(1)  # Primeiro item (0 pode ser "Selecione")
+                        registrar_log("Não encontrou entidade específica. Selecionou a primeira entidade disponível.")
+                    except:
+                        registrar_log("Falha ao selecionar entidade do dropdown.")
+                
+                time.sleep(1)
+            # Tenta localizar outro formato de combobox se o anterior falhar
+            elif elemento_presente(driver, By.XPATH, "//select[contains(@id, 'ddlEntidade')]", timeout=3):
+                entidade_dropdown = Select(driver.find_element(By.XPATH, "//select[contains(@id, 'ddlEntidade')]"))
+                nome_entidade = instituicoes_dados[instituicao_selecionada]["nome_entidade"]
+                
+                try:
+                    entidade_dropdown.select_by_visible_text(nome_entidade)
+                    registrar_log(f"Selecionou a entidade '{nome_entidade}' pelo texto visível (método 2).")
+                except:
+                    try:
+                        entidade_dropdown.select_by_index(1)
+                        registrar_log("Selecionou a primeira entidade disponível (método 2).")
+                    except:
+                        registrar_log("Falha ao selecionar entidade do dropdown (método 2).")
+            else:
+                registrar_log("Não foi possível encontrar o dropdown de entidades.")
+            
+            # Tenta clicar no botão "Nova Nota" - Experimentando diferentes formas de localizar
+            if elemento_presente(driver, By.XPATH, "//input[@value='Nova Nota']", timeout=2):
+                driver.find_element(By.XPATH, "//input[@value='Nova Nota']").click()
+                registrar_log("Clicou em 'Nova Nota'.")
+            elif elemento_presente(driver, By.XPATH, "//input[contains(@id, 'btnNovaNota')]", timeout=2):
+                driver.find_element(By.XPATH, "//input[contains(@id, 'btnNovaNota')]").click()
+                registrar_log("Clicou em 'Nova Nota' (método 2).")
+            elif elemento_presente(driver, By.LINK_TEXT, "Nova Nota", timeout=2):
+                driver.find_element(By.LINK_TEXT, "Nova Nota").click()
+                registrar_log("Clicou em 'Nova Nota' (método 3).")
+            elif elemento_presente(driver, By.XPATH, "//a[text()='Nova Nota']", timeout=2):
+                driver.find_element(By.XPATH, "//a[text()='Nova Nota']").click()
+                registrar_log("Clicou em 'Nova Nota' (método 4).")
+            else:
+                # Tenta localizar qualquer elemento com o texto "Nova Nota"
+                elementos = driver.find_elements(By.XPATH, "//*[contains(text(),'Nova Nota')]")
+                if elementos:
+                    try:
+                        elementos[0].click()
+                        registrar_log("Clicou em elemento com texto 'Nova Nota'.")
+                    except:
+                        registrar_log("Encontrou elemento com texto 'Nova Nota' mas não conseguiu clicar.")
+                else:
+                    registrar_log("Botão 'Nova Nota' não encontrado. Tentando localizar pela posição na página...")
+                    
+                    # Última tentativa - buscar todos os botões/inputs da página
+                    botoes = driver.find_elements(By.XPATH, "//input[@type='button' or @type='submit']")
+                    for botao in botoes:
+                        try:
+                            valor = botao.get_attribute("value")
+                            if valor and "nova" in valor.lower():
+                                registrar_log(f"Encontrou botão com valor '{valor}'. Tentando clicar.")
+                                botao.click()
+                                time.sleep(1)
+                                break
+                        except:
+                            continue
+            
+            # Espera um tempo para a navegação ocorrer
+            time.sleep(3)
+            
+            # Verifica se já estamos na tela de cadastro
+            if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']", timeout=3):
+                registrar_log("Navegação para tela de cadastro bem-sucedida após selecionar entidade!")
+                return True
+                
+            # Verifica se precisamos pressionar ESC para fechar algum popup
+            action = ActionChains(driver)
+            action.send_keys(Keys.ESCAPE).perform()
+            registrar_log("Enviou tecla 'ESC' para fechar possíveis popups.")
+            time.sleep(1)
+            
+            return True
+            
+        # Tela padrão de seleção de entidade
+        else:
+            registrar_log("Detectada tela padrão de seleção de entidade.")
+            
+            # Seleciona a entidade e clica em "Nova Nota"
+            if elemento_presente(driver, By.ID, "ddlEntidadeFilantropica", timeout=3):
+                entidade_dropdown = Select(driver.find_element(By.ID, "ddlEntidadeFilantropica"))
+                nome_entidade = instituicoes_dados[instituicao_selecionada]["nome_entidade"]
+                
+                try:
+                    entidade_dropdown.select_by_visible_text(nome_entidade)
+                    registrar_log(f"Selecionou a entidade '{nome_entidade}'.")
+                except:
+                    try:
+                        opcoes = entidade_dropdown.options
+                        registrar_log(f"Opções disponíveis: {[o.text for o in opcoes]}")
+                        if len(opcoes) > 1:
+                            entidade_dropdown.select_by_index(1)
+                            registrar_log("Selecionou a primeira entidade disponível.")
+                    except Exception as e:
+                        registrar_log(f"Erro ao selecionar entidade: {str(e)}")
+                
+                time.sleep(1)
+                
+                if elemento_presente(driver, By.XPATH, "//input[@value='Nova Nota']", timeout=2):
+                    driver.find_element(By.XPATH, "//input[@value='Nova Nota']").click()
+                    registrar_log("Clicou em 'Nova Nota'.")
+                    time.sleep(2)
+                    
+                    # Verifica se há algum pop-up e pressiona ESC para fechá-lo
+                    action = ActionChains(driver)
+                    action.send_keys(Keys.ESCAPE).perform()
+                    registrar_log("Enviou tecla 'ESC'.")
+                    time.sleep(1)
+                    return True
+                else:
+                    registrar_log("Botão 'Nova Nota' não encontrado na tela padrão.")
+                    return False
+            else:
+                registrar_log("Dropdown de entidades não encontrado na tela padrão.")
+                return False
+                
+    except Exception as e:
+        registrar_log(f"Erro ao selecionar entidade: {str(e)}")
+        return False
+
+# Função para navegar para o cadastro a partir da seção de entidades
+def navegar_para_cadastro_a_partir_de_entidades(driver):
+    try:
+        registrar_log("Tentando navegar a partir da seção de entidades...")
+        # Primeiro tenta clicar em "Cadastramento de Cupons" se estiver na página de entidades
+        if elemento_presente(driver, By.XPATH, "//a[text()='Cadastramento de Cupons']"):
+            driver.find_element(By.XPATH, "//a[text()='Cadastramento de Cupons']").click()
+            registrar_log("Clicou em 'Cadastramento de Cupons'.")
+            time.sleep(2)
+            
+            # Verifica se precisa clicar em "Prosseguir"
+            if elemento_presente(driver, By.XPATH, "//input[@value='Prosseguir']"):
+                driver.find_element(By.XPATH, "//input[@value='Prosseguir']").click()
+                registrar_log("Clicou em 'Prosseguir'.")
+                time.sleep(2)
+                
+                # Após clicar em "Prosseguir", deve-se selecionar a entidade
+                if elemento_presente(driver, By.ID, "ddlEntidadeFilantropica"):
+                    selecionar_entidade_e_continuar(driver)
+                    return True
+            return True
+        else:
+            # Se não estiver na página correta, volta para a tela principal
+            registrar_log("Não encontrou o link 'Cadastramento de Cupons'. Voltando para o início.")
+            driver.get("https://www.nfp.fazenda.sp.gov.br/Principal.aspx")
+            time.sleep(2)
+            navegar_para_cadastro(driver)
+            return False
+    except Exception as e:
+        registrar_log(f"Erro ao navegar a partir de entidades: {str(e)}")
+        return False
+
+# Função para navegar até a página de cadastro de cupons
+def navegar_para_cadastro(driver):
+    try:
+        registrar_log("Iniciando navegação para a tela de cadastro...")
+        
+        # Primeiro verifica se já estamos na tela de cadastro
+        url_atual = driver.current_url
+        if "EntidadesFilantropicas/CadastroNotaEntidade.aspx" in url_atual or "ListagemNotaEntidade.aspx" in url_atual:
+            if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']"):
+                registrar_log("Já estamos na tela de cadastro.")
+                # Fechar qualquer popup antes de prosseguir
+                fechar_popup_com_esc(driver)
+                return True
+            
+        # Verifica se estamos na tela principal
+        if "Principal.aspx" in url_atual:
+            registrar_log("Estamos na tela principal, navegando para Entidades...")
+            
+            # Tenta clicar no link "Entidades" usando diferentes métodos
+            try:
+                # Método 1: Usar XPath específico para o link na seção "nfpfacil"
+                driver.find_element(By.XPATH, "//div[@class='nfpfacil']//a[text()='Entidades']").click()
+                registrar_log("Clicou em 'Entidades' (método 1).")
+            except:
+                try:
+                    # Método 2: Tentar com um seletor mais genérico
+                    driver.find_element(By.XPATH, "//a[text()='Entidades']").click()
+                    registrar_log("Clicou em 'Entidades' (método 2).")
+                except:
+                    try:
+                        # Método 3: Tentar com um seletor de link parcial
+                        driver.find_element(By.PARTIAL_LINK_TEXT, "Entidades").click()
+                        registrar_log("Clicou em 'Entidades' (método 3).")
+                    except:
+                        # Método 4: Navegar diretamente para a URL de Entidades
+                        driver.get("https://www.nfp.fazenda.sp.gov.br/EntidadesFilantropicas/CadastroEntidades.aspx")
+                        registrar_log("Navegação direta para a página de Entidades.")
+            
+            # Espera para a página carregar
+            time.sleep(3)
+            
+            # Agora tenta clicar em "Cadastramento de Cupons"
+            try:
+                # Verifica se o elemento está visível antes de clicar
+                if elemento_presente(driver, By.XPATH, "//a[text()='Cadastramento de Cupons']", timeout=3):
+                    driver.find_element(By.XPATH, "//a[text()='Cadastramento de Cupons']").click()
+                    registrar_log("Clicou em 'Cadastramento de Cupons'.")
+                    time.sleep(2)
+                else:
+                    registrar_log("Link 'Cadastramento de Cupons' não encontrado após clicar em 'Entidades'.")
+                    
+                    # Verifica se estamos na página de CadastroEntidades.aspx
+                    if "CadastroEntidades.aspx" in driver.current_url:
+                        # Tenta encontrar links relacionados a cupons
+                        links = driver.find_elements(By.TAG_NAME, "a")
+                        for link in links:
+                            try:
+                                texto = link.text.lower()
+                                if "cupom" in texto or "cupons" in texto or "cadastramento" in texto:
+                                    registrar_log(f"Encontrou link relacionado: '{link.text}'. Tentando clicar.")
+                                    link.click()
+                                    time.sleep(2)
+                                    break
+                            except:
+                                continue
+                    
+                    # Última tentativa - navegar diretamente para a URL de Cadastramento de Cupons
+                    if "CadastroNotaEntidade.aspx" not in driver.current_url and "ListagemNotaEntidade.aspx" not in driver.current_url:
+                        driver.get("https://www.nfp.fazenda.sp.gov.br/EntidadesFilantropicas/CadastroNotaEntidade.aspx")
+                        registrar_log("Navegação direta para a página de Cadastramento de Cupons.")
+                        time.sleep(3)
+            except Exception as e:
+                registrar_log(f"Erro ao clicar em 'Cadastramento de Cupons': {str(e)}")
+                # Tenta navegação direta
+                driver.get("https://www.nfp.fazenda.sp.gov.br/EntidadesFilantropicas/CadastroNotaEntidade.aspx")
+                registrar_log("Navegação direta para a página de Cadastramento de Cupons após erro.")
+                time.sleep(3)
+            
+            # Verifica se precisamos clicar em "Prosseguir"
+            if elemento_presente(driver, By.XPATH, "//input[@value='Prosseguir']", timeout=2):
+                driver.find_element(By.XPATH, "//input[@value='Prosseguir']").click()
+                registrar_log("Clicou em 'Prosseguir'.")
+                time.sleep(2)
+                
+                # Seleciona a entidade e clica em "Nova Nota"
+                if elemento_presente(driver, By.ID, "ddlEntidadeFilantropica", timeout=3):
+                    selecionar_entidade_e_continuar(driver)
+                    time.sleep(2)
+            
+            # Verifica se chegamos à tela de cadastro ou listagem
+            url_atual = driver.current_url
+            if "CadastroNotaEntidade.aspx" in url_atual or "ListagemNotaEntidade.aspx" in url_atual:
+                registrar_log("Chegou à tela de cadastro ou listagem. Verificando se há popup para fechar...")
+                fechar_popup_com_esc(driver)
+                
+                if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']", timeout=3):
+                    registrar_log("Navegação para tela de cadastro bem-sucedida!")
+                    return True
+                else:
+                    registrar_log("Não encontrou o botão 'Salvar Nota' na tela atual.")
+                    return False
+            else:
+                registrar_log("Não foi possível identificar a tela de cadastro após navegação.")
+                return False
+                
+        # Se não estamos na tela principal, tente navegar para ela primeiro
+        else:
+            registrar_log("Não estamos na tela principal. Navegando para ela primeiro...")
+            driver.get("https://www.nfp.fazenda.sp.gov.br/Principal.aspx")
+            time.sleep(3)
+            return navegar_para_cadastro(driver)  # Chamada recursiva após ir para a tela principal
+            
+    except Exception as e:
+        registrar_log(f"Erro ao navegar para cadastro: {str(e)}")
+        # Em caso de erro, tenta navegar diretamente
+        try:
+            driver.get("https://www.nfp.fazenda.sp.gov.br/Principal.aspx")
+            time.sleep(2)
+            registrar_log("Redirecionado para a tela principal após erro. Tentando novamente...")
+            # Tenta novamente após um erro, mas sem recursão para evitar loop infinito
+            try:
+                # Tenta clicar no link "Entidades"
+                if elemento_presente(driver, By.XPATH, "//a[text()='Entidades']", timeout=3):
+                    driver.find_element(By.XPATH, "//a[text()='Entidades']").click()
+                    registrar_log("Clicou em 'Entidades' após erro.")
+                    time.sleep(2)
+                    
+                    # Tenta clicar em "Cadastramento de Cupons"
+                    if elemento_presente(driver, By.XPATH, "//a[text()='Cadastramento de Cupons']", timeout=3):
+                        driver.find_element(By.XPATH, "//a[text()='Cadastramento de Cupons']").click()
+                        registrar_log("Clicou em 'Cadastramento de Cupons' após erro.")
+                        time.sleep(2)
+                else:
+                    # Navegação direta em caso de falha
+                    driver.get("https://www.nfp.fazenda.sp.gov.br/EntidadesFilantropicas/CadastroNotaEntidade.aspx")
+                    registrar_log("Navegação direta para a tela de cadastro após falha em encontrar links.")
+            except:
+                registrar_log("Falha na segunda tentativa. Tentando navegação direta final.")
+                driver.get("https://www.nfp.fazenda.sp.gov.br/EntidadesFilantropicas/CadastroNotaEntidade.aspx")
+        except:
+            registrar_log("Falha em todas as tentativas de navegação.")
+        return False
 
 # Função para cadastrar um número de identificação
 def cadastrar_numero(driver, numero, indice):
     try:
+        # Verificar se estamos na tela de cadastro antes de começar
+        tela_atual = verificar_tela_atual(driver)
+        if tela_atual != "cadastro":
+            registrar_log(f"[{indice}] Não está na tela de cadastro. Tentando navegar de volta.")
+            return False  # Retorna falso para tentar novamente após a navegação
+        
+        # Só fecha popup no primeiro item ou depois de um número definido de cadastros
+        first_item = (indice == 1 or isinstance(indice, str) and "Reprocessado-1" in indice)
+        check_popup_interval = 100  # Verificar a cada 10 cadastros
+
+        if first_item or (isinstance(indice, int) and indice % check_popup_interval == 0):
+            registrar_log(f"[{indice}] Verificando se há popup para fechar...")
+            fechar_popup_com_esc(driver)
+        # else:
+        #     registrar_log(f"[{indice}] Pulando verificação de popup (será verificado a cada {check_popup_interval} itens).")
+        
         registrar_log(f"[{indice}] Processando número de identificação: {numero}")
         input_field = waiting(driver, By.XPATH, "//input[@title='Digite ou Utilize um leitor de código de barras ou QRCode']")
         input_field.clear()
         input_field.send_keys(Keys.HOME)
-        time.sleep(1)
+        time.sleep(0.5)
         input_field.send_keys(numero)
-        time.sleep(1)
-
+        time.sleep(0.5)
         colado = re.sub(r'\D', '', input_field.get_attribute('value'))
         esperado = re.sub(r'\D', '', numero)
-
+        
         while colado != esperado:
             registrar_log(f"[{indice}] Número colado incorretamente: {colado}. Tentando novamente.")
             input_field.clear()
             input_field.send_keys(Keys.HOME)
-            time.sleep(1)
+            time.sleep(0.5)
             input_field.send_keys(numero)
-            time.sleep(1)
+            time.sleep(0.5)
             colado = re.sub(r'\D', '', input_field.get_attribute('value'))
-
-        waiting(driver, By.XPATH, "//input[@value='Salvar Nota']").click()
-        time.sleep(2)
+        
+        # Clicar no botão "Salvar Nota"
+        if elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']"):
+            driver.find_element(By.XPATH, "//input[@value='Salvar Nota']").click()
+            #registrar_log(f"[{indice}] Clicou em 'Salvar Nota'.")
+            time.sleep(0.5)
+        else:
+            registrar_log(f"[{indice}] Botão 'Salvar Nota' não encontrado.")
+            # Verificar novamente a tela atual
+            tela_atual = verificar_tela_atual(driver)
+            return False
         
         # Verifica a tela após tentar salvar a nota
-        tela_atual = verificar_tela_atual(driver)
-        if tela_atual != "cadastro":
-            return False  # Ou algum outro comportamento adequado
-
+        url_atual = driver.current_url
+        if "EntidadesFilantropicas/CadastroNotaEntidade.aspx" not in url_atual and "ListagemNotaEntidade.aspx" not in url_atual or not elemento_presente(driver, By.XPATH, "//input[@value='Salvar Nota']"):
+            registrar_log(f"[{indice}] Saiu da tela de cadastro após salvar. Navegando de volta.")
+            tela_atual = verificar_tela_atual(driver)
+            return False
+        
         try:
-            sucesso_msg = waiting(driver, By.ID, "lblInfo",timeout = 1).text
-            if "Doação registrada com sucesso" in sucesso_msg:
-                registrar_log(f"[{indice}] cadastrada com sucesso.")
-                return True
-            else:
-                raise Exception("Mensagem de sucesso não encontrada.")
-        except Exception:
-            erro_msg = waiting(driver, By.ID, "lblErro").text
-            if " já existe no sistema" in erro_msg:
-                registrar_log(f"[{indice}] Nota já estava cadastrada no sistema: {numero}")
-                return 'ja_cadastrada'
-            if "Data da Nota excedeu" in erro_msg:
-                registrar_log(f"[{indice}] Data da Nota {numero} excedeu o prazo de cadastro.")
-                return 'expirada'
-            if "Não foi possível incluir o pedido" in erro_msg:
-                registrar_log(f"[{indice}] Erro: Não foi possível incluir o pedido.")
-                return 'limite_atingido'
-            else:
-                registrar_log(f"[{indice}] Erro desconhecido ao cadastrar número: {numero}")
-                return False
-
-        time.sleep(2)
+            # Verificar mensagem de sucesso
+            if elemento_presente(driver, By.ID, "lblInfo"):
+                sucesso_msg = driver.find_element(By.ID, "lblInfo").text
+                if "Doação registrada com sucesso" in sucesso_msg:
+                    registrar_log(f"[{indice}] Cadastrada com sucesso.")
+                    return True
+            
+            # Verificar mensagem de erro
+            if elemento_presente(driver, By.ID, "lblErro"):
+                erro_msg = driver.find_element(By.ID, "lblErro").text
+                if " já existe no sistema" in erro_msg:
+                    # registrar_log(f"[{indice}] Nota já estava cadastrada no sistema: {numero}")
+                    return 'ja_cadastrada'
+                if "Data da Nota excedeu" in erro_msg:
+                    registrar_log(f"[{indice}] Data da Nota {numero} excedeu o prazo de cadastro.")
+                    return 'expirada'
+                if "Não foi possível incluir o pedido" in erro_msg:
+                    registrar_log(f"[{indice}] Erro: Não foi possível incluir o pedido.")
+                    return 'limite_atingido'
+                else:
+                    registrar_log(f"[{indice}] Erro desconhecido ao cadastrar número: {erro_msg}")
+                    return False
+            
+            # Se não encontrou nem mensagem de sucesso nem de erro
+            registrar_log(f"[{indice}] Não foi possível determinar se o cadastro foi bem-sucedido.")
+            return False
+            
+        except Exception as e:
+            registrar_log(f"[{indice}] Erro ao verificar resultado do cadastro: {str(e)}")
+            # Verificar se ainda estamos na tela de cadastro
+            tela_atual = verificar_tela_atual(driver)
+            return False
+            
     except Exception as e:
         registrar_log(f"[{indice}] Erro ao cadastrar número {numero}: {str(e)}")
-        verificar_tela_atual(driver)
+        # Verificar a tela atual em caso de erro
+        tela_atual = verificar_tela_atual(driver)
         return False
-    
-# parte 5
 
 # Função para reprocessar números inválidos
 def reprocessar_numeros(driver, numeros_invalidos_lista):
@@ -498,34 +878,34 @@ def reprocessar_numeros(driver, numeros_invalidos_lista):
                 registrar_log("Reprocessamento interrompido pelo usuário.")
                 break
 
-            resultado = cadastrar_numero(driver, numero, f"Reprocessado-{i}")
-            if resultado == True:
-                sucesso_reprocessados += 1
+            # Verificar a tela atual antes de reprocessar
+            tela_atual = verificar_tela_atual(driver)
+            if tela_atual != "cadastro":
+                registrar_log(f"[Reprocessado-{i}] Não está na tela de cadastro. Tentando navegar de volta.")
+                time.sleep(2)
+
+            # Tentar reprocessar até 3 vezes
+            tentativas = 0
+            sucesso = False
+            while not sucesso and tentativas < 3:
+                resultado = cadastrar_numero(driver, numero, f"Reprocessado-{i}")
+                if resultado == True:
+                    sucesso_reprocessados += 1
+                    sucesso = True
+                else:
+                    tentativas += 1
+                    tela_atual = verificar_tela_atual(driver)
+                    if tela_atual != "cadastro":
+                        registrar_log(f"[Reprocessado-{i}] Tentativa {tentativas}: Saiu da tela de cadastro. Tentando navegar de volta.")
+                        time.sleep(2)
+                    if tentativas >= 3:
+                        registrar_log(f"[Reprocessado-{i}] Falha após 3 tentativas.")
+
+            # Implementa a funcionalidade de pausa
+            while pause_event.is_set():
+                time.sleep(0.1)
 
     return reprocessados, sucesso_reprocessados
-
-# Função para enviar dados ao monitor web
-def monitor(qtd):
-    registrar_log('Tentando atualizar dados no Monitor.')
-    try:
-        url = 'https://leandrolopesleal26.pythonanywhere.com/update'
-
-        data = {
-            'robot_name': nome,
-            'quantity': qtd,
-            'descricao': 'Cadastro de Nota Fiscal Paulista'
-        }
-
-        response = requests.post(url, json=data)
-        registrar_log(f"Resposta da request Monitor: {response.status_code}")
-
-        if response.json().get('success'):
-            registrar_log('Dados atualizados com sucesso no Monitor.')
-        else:
-            registrar_log('Erro ao atualizar os dados no monitor.')
-    except Exception as err:
-        registrar_log(f"Erro ao tentar atualizar o monitor web: {err}")
-        return False
 
 # Função principal para cadastrar números
 def cadastrar_numeros():
@@ -554,19 +934,47 @@ def cadastrar_numeros():
                 registrar_log("Cadastro interrompido pelo usuário.")
                 break
 
-            resultado = cadastrar_numero(driver, numero, i)
-            if resultado == True:
-                numeros_cadastrados += 1
-            elif resultado == 'ja_cadastrada':
-                numeros_ja_cadastrados += 1
-            elif resultado == 'expirada':
-                numeros_expirados += 1
-            elif resultado == 'limite_atingido':
-                registrar_log("Sistema atingiu o limite de cadastro.")
-                break
-            else:
-                numeros_invalidos += 1
-                numeros_invalidos_lista.append(numero)
+            # Verificar a tela atual antes de cadastrar
+            tela_atual = verificar_tela_atual(driver)
+            if tela_atual != "cadastro":
+                registrar_log(f"[{i}] Não está na tela de cadastro. Tentando navegar de volta.")
+                navegar_para_cadastro(driver)
+                time.sleep(2)
+
+            # Tentar cadastrar o número até 3 vezes se falhar por problemas de navegação
+            tentativas = 0
+            sucesso = False
+            while not sucesso and tentativas < 3:
+                resultado = cadastrar_numero(driver, numero, i)
+                
+                if resultado == True:
+                    numeros_cadastrados += 1
+                    sucesso = True
+                elif resultado == 'ja_cadastrada':
+                    numeros_ja_cadastrados += 1
+                    sucesso = True
+                elif resultado == 'expirada':
+                    numeros_expirados += 1
+                    sucesso = True
+                elif resultado == 'limite_atingido':
+                    registrar_log("Sistema atingiu o limite de cadastro.")
+                    sucesso = True
+                    break  # Sai do loop principal
+                else:
+                    # Falhou, verifica se ainda estamos na tela de cadastro
+                    tentativas += 1
+                    tela_atual = verificar_tela_atual(driver)
+                    if tela_atual != "cadastro":
+                        registrar_log(f"[{i}] Tentativa {tentativas}: Saiu da tela de cadastro. Tentando navegar de volta.")
+                        navegar_para_cadastro(driver)
+                        time.sleep(2)
+                    else:
+                        registrar_log(f"[{i}] Tentativa {tentativas}: Falha ao cadastrar, mas ainda na tela de cadastro. Tentando novamente.")
+                        
+                    if tentativas >= 3:
+                        numeros_invalidos += 1
+                        numeros_invalidos_lista.append(numero)
+                        registrar_log(f"[{i}] Falha após 3 tentativas. Marcando como inválido.")
 
             # Atualiza a progressão
             progresso = (i / total_numeros) * 100
@@ -597,9 +1005,6 @@ def cadastrar_numeros():
                 relatorio_file.write(f"Total de reprocessados cadastrados com sucesso: {sucesso_reprocessados}\n")
                 relatorio_file.write(f"Tempo total de execução: {tempo_execucao_formatado}\n")
             
-            monitor(numeros_cadastrados)
-            enviar_email()
-            
             # Conversão de texto em fala
             def falar_conclusao():
                 engine = pyttsx3.init()
@@ -613,13 +1018,9 @@ def cadastrar_numeros():
         
     except Exception as e:
         registrar_log(f"Erro na navegação: {str(e)}")
-        monitor(numeros_cadastrados)
-        enviar_email()
     finally:
         driver.quit()
         registrar_log("Fechando o navegador.")
-
-# parte 6
 
 # Função para parar o processamento
 def parar_processamento():
@@ -681,11 +1082,11 @@ pause_event = threading.Event()
 
 # ProgressBar para mostrar progresso
 progress_bar = ttk.Progressbar(root, orient="horizontal", mode="determinate", length=400)
-progress_bar.grid(row=3, column=0, columnspan=3, pady=10)
+progress_bar.grid(row=5, column=0, columnspan=3, pady=10, sticky='ew')
 
 # Define o tamanho da janela
-window_width = 550  # Aumentado para acomodar novos controles
-window_height = 700
+window_width = 380  # Aumentado para acomodar novos controles
+window_height = 770
 
 # Obtém as dimensões da tela
 screen_width = root.winfo_screenwidth()
@@ -701,14 +1102,14 @@ root.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
 frame = tk.Frame(root, padx=10, pady=10)
 frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-entry_pasta_origem = tk.Entry(frame, width=50)
+entry_pasta_origem = tk.Entry(frame, width=35)
 entry_pasta_origem.grid(row=1, column=0, columnspan=3, pady=5, padx=5)
 
 select_button = tk.Button(frame, text="Selecionar Pasta", command=selecionar_pasta_e_processar)
-select_button.grid(row=1, column=3, pady=5, padx=5)
+select_button.grid(row=1, column=3, pady=5, padx=0)
 
 start_button = tk.Button(frame, text="Iniciar Cadastro", state=tk.DISABLED, command=lambda: threading.Thread(target=cadastrar_numeros).start())
-start_button.grid(row=2, column=0, pady=5, padx=5)
+start_button.grid(row=2, column=0, pady=5, padx=1)
 
 pause_button = tk.Button(frame, text="Pausar/Retomar", command=pausar_processamento)
 pause_button.grid(row=2, column=1, pady=5, padx=5)
@@ -720,8 +1121,9 @@ stop_button.grid(row=2, column=2, pady=5, padx=5)
 label_arquivos = tk.Label(frame, text="Total: 0 notas")
 label_arquivos.grid(row=2, column=3, pady=5, padx=5)
 
-root.grid_rowconfigure(3, weight=1)  # Permite que o log_area expanda
+root.grid_rowconfigure(4, weight=1)  # Permite que o log_area expanda
 root.grid_columnconfigure(0, weight=1)
+root.grid_rowconfigure(5, weight=0)
 
 # Mensagem de áudio após carregar a interface gráfica
 def mensagem_audio_inicio():

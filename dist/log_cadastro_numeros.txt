@@ -1,0 +1,3 @@
+2025-05-16 22:05:11,512 - Usuário selecionado: Anderson da instituição WISE MADNESS
+2025-05-16 22:05:11,512 - Instituição selecionada: WISE MADNESS
+2025-05-16 22:05:11,512 - Usuário selecionado: Anderson da instituição WISE MADNESS

@@ -122,7 +122,14 @@ instituicoes_dados = {
             "MARIANA": {
                 "user": "43083865864",
                 "password": "Thega100317"
+            },
+            "NATALIA2": {
+                "user": "43543797832",
+                "password": "N@ty2904"
             }
+
+            
+
         }
     },
     "CASA DA ESPERANCA": {
@@ -136,6 +143,14 @@ instituicoes_dados = {
             "Kezia": {
                 "user": "48641234896",
                 "password": "16282610Ana"
+            },
+            "NATALIA2": {
+                "user": "43543797832",
+                "password": "N@ty2904"
+            },
+            "Daniel": {
+                "user": "38627862850",
+                "password": "Daniel2025@"
             }
             # Adicione outros usuários da CASA DA ESPERANCA aqui se necessário
         }

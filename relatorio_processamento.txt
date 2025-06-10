@@ -1,0 +1,7 @@
+Total de números cadastrados com sucesso: 99
+Total de números inválidos: 39
+Total de notas já cadastradas no sistema: 0
+Total de notas expiradas: 0
+Total de números reprocessados: 39
+Total de reprocessados cadastrados com sucesso: 0
+Tempo total de execução: 00:36:02
